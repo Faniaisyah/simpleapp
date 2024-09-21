@@ -1,11 +1,10 @@
 import { Component, OnInit } from '@angular/core';
 import Map from '@arcgis/core/Map';
 import MapView from '@arcgis/core/views/MapView';
-import { Geolocation } from '@capacitor/geolocation';
 import Graphic from '@arcgis/core/Graphic';
 import Point from '@arcgis/core/geometry/Point';
 import SimpleMarkerSymbol from '@arcgis/core/symbols/SimpleMarkerSymbol';
-import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
+import ImageryLayer from '@arcgis/core/layers/ImageryLayer';
 
 @Component({
   selector: 'app-home',
@@ -13,55 +12,99 @@ import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
   styleUrls: ['home.page.scss'],
 })
 export class HomePage implements OnInit {
+  mapView: MapView | any;
+  userLocationGraphic: Graphic | any;
+  selectedBasemap: string = 'topo-vector'; // Default basemap
 
-  constructor() {}
-  private latitude: number | any;
-  private longitude: number | any;
+  constructor() { }
 
-  public async ngOnInit() {
-    const position = await Geolocation.getCurrentPosition();
-    this.latitude = position.coords.latitude;
-    this.longitude = position.coords.longitude;
-
-    // Buat peta dan tampilan peta
+  async ngOnInit() {
     const map = new Map({
-      basemap: "topo-vector"
+      basemap: this.selectedBasemap
     });
 
-    const view = new MapView({
-      container: "container",
+    this.mapView = new MapView({
+      container: 'container',
       map: map,
-      zoom: 14,
-      center: [this.longitude, this.latitude]
+      zoom: 12
     });
 
-    // Buat layer grafik untuk menambahkan marker
-    const graphicsLayer = new GraphicsLayer();
-    map.add(graphicsLayer);
+    // Add weather service layer
+    let weatherServiceFL = new ImageryLayer({ url: WeatherServiceUrl });
+    map.add(weatherServiceFL);
 
-    // Buat simbol untuk marker
+    // Add marker layer after weather service layer
+    await this.updateUserLocationOnMap();
+    this.mapView.center = this.userLocationGraphic.geometry as Point;
+    setInterval(this.updateUserLocationOnMap.bind(this), 10000);
+
+    // Add a specific marker
+    this.addMarkerAtSpecificLocation();
+  }
+
+  async getLocationService(): Promise<number[]> {
+    return new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition((resp) => {
+        resolve([resp.coords.latitude, resp.coords.longitude]);
+      });
+    });
+  }
+
+  async updateUserLocationOnMap() {
+    let latLng = await this.getLocationService();
+    let geom = new Point({ latitude: latLng[0], longitude: latLng[1] });
+    if (this.userLocationGraphic) {
+      this.userLocationGraphic.geometry = geom;
+    } else {
+      this.userLocationGraphic = new Graphic({
+        symbol: new SimpleMarkerSymbol({
+          color: [226, 119, 40], // Orange color
+          size: 8,
+          outline: {
+            color: [255, 255, 255], // White color
+            width: 1
+          }
+        }),
+        geometry: geom,
+      });
+      this.mapView.graphics.add(this.userLocationGraphic);
+    }
+  }
+
+  addMarkerAtSpecificLocation() {
+    // Define the specific location for the marker
+    const lat =  49.976270479779885 ; // Example latitude
+    const lng = -97.25557277783014; // Example longitude
+
+
+    const markerPoint = new Point({
+      latitude: lat,
+      longitude: lng
+    });
+
     const markerSymbol = new SimpleMarkerSymbol({
-      color: [226, 119, 40], // Warna marker (orange)
+      color: [0, 0, 255], // Blue color
+      size: 12,
       outline: {
-        color: [255, 255, 255], // Warna outline (putih)
+        color: [255, 255, 255], // White color
         width: 2
       }
     });
 
-    // Buat point untuk lokasi saat ini
-    const point = new Point({
-      longitude: this.longitude,
-      latitude: this.latitude
-    });
-
-    // Buat grafik untuk marker
-    const pointGraphic = new Graphic({
-      geometry: point,
+    const markerGraphic = new Graphic({
+      geometry: markerPoint,
       symbol: markerSymbol
     });
 
-    // Tambahkan marker ke layer grafik
-    graphicsLayer.add(pointGraphic);
+    // Add the marker to the map view
+    this.mapView.graphics.add(markerGraphic);
   }
 
+  changeBasemap() {
+    if (this.mapView && this.selectedBasemap) {
+      this.mapView.map.basemap = this.selectedBasemap;
+    }
+  }
 }
+
+const WeatherServiceUrl = 'https://mapservices.weather.noaa.gov/eventdriven/rest/services/radar/radar_base_reflectivity_time/ImageServer';
